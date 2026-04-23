@@ -22,8 +22,8 @@ LANG = {
         "doubao_ep": "豆包 大脑接入点 (Vision Pro EP)",
         "doubao_draw_ep": "豆包 画笔接入点 (Seedream EP)",
         "step1": "📍 步骤 1: 上传户型图 (必填项)",
-        "step2": "🏢 步骤 2: 上传样板间实勘 (MP4/图/GIF)",
-        "step2_desc": "全屋参考。若视频过大将自动抽帧。AI将自动匹配房间画面。",
+        "step2": "🏢 步骤 2: 样板间实勘图库 (支持多传)",
+        "step2_desc": "强烈建议上传多张不同房间的照片(可达15张)，或短视频。AI将自动匹配房间。",
         "step3": "🎨 步骤 3: 期望风格参考 (选填项)",
         "step3_desc": "上传您真正喜欢的装修风格参考图。",
         "step4": "💬 步骤 4: 具体改造需求",
@@ -34,8 +34,8 @@ LANG = {
         "btn_draw": "🎨 智能渲染 3D 效果图",
         "warning_api": "请在侧边栏完善大脑和画笔的 API 密钥信息！",
         "warning_file": "请至少上传户型图和样板间参考！",
-        "info_extracting": "🎥 正在自动提取视频/GIF关键帧用于分析...",
-        "status_analyzing": "AI 大脑正在解析空间结构与尺寸，生成全屋方案中...",
+        "info_extracting": "🎥 正在处理实勘多媒体矩阵...",
+        "status_analyzing": "AI 大脑正在解析空间矩阵与尺寸，生成全屋方案中...",
         "status_drawing": "AI 画笔正在绘制 spatial-aware 效果图 (约 15 秒)...",
         "success": "✨ 全屋方案设计完成！",
         "success_draw": "🖼️ 效果图渲染完毕！"
@@ -49,8 +49,8 @@ LANG = {
         "doubao_ep": "Doubao Brain Endpoint (Vision Pro)",
         "doubao_draw_ep": "Doubao Drawing Endpoint (Seedream)",
         "step1": "📍 Step 1: Floor Plan (Required)",
-        "step2": "🏢 Step 2: Showhouse Reality (MP4/IMG/GIF)",
-        "step2_desc": "Global ref. AI will auto-match room frames from video.",
+        "step2": "🏢 Step 2: Showhouse Gallery (Multi-upload)",
+        "step2_desc": "Upload multiple room photos or videos. AI will auto-match.",
         "step3": "🎨 Step 3: Desired Style (Optional)",
         "step3_desc": "Upload a reference for the desired style.",
         "step4": "💬 Step 4: Specific Requirements",
@@ -61,7 +61,7 @@ LANG = {
         "btn_draw": "🎨 Smart Render 3D Image",
         "warning_api": "Please configure Brain and Drawing API keys in the sidebar!",
         "warning_file": "Please upload at least a floor plan and showhouse!",
-        "info_extracting": "🎥 Auto-extracting key frames...",
+        "info_extracting": "🎥 Processing media gallery...",
         "status_analyzing": "Analyzing the space & dimensions... Please wait...",
         "status_drawing": "Rendering 3D image (approx. 15s)...",
         "success": "✨ Global Design Plan Completed!",
@@ -70,14 +70,14 @@ LANG = {
 }
 
 # ==========================================
-# 2. 核心提示词与辅助函数 (加入智能压缩与AI寻帧引擎)
+# 2. 核心提示词与辅助函数 
 # ==========================================
 def get_system_prompt(language, user_requirements, has_style_ref):
     style_logic = "严格参考【期望风格图】的色调和材质。" if has_style_ref else f"完全根据需求：【{user_requirements}】来构思。"
     if language == "CN":
-        return f"你是一名顶尖室内设计师。\n1. 【全局户型图】：看结构。**务必读取尺寸数值作为约束**。\n2. 【实勘视频/帧】：看真实层高采光。\n3. 【期望风格】：{style_logic}\n\n客户需求：【{user_requirements}】\n\n请输出：\n### 📍 空间尺寸与分割分析\n### 🛋️ 定制化全屋设计方案\n### 🎨 AI 效果图描述词 (英文 Midjourney格式)"
+        return f"你是一名顶尖室内设计师。\n1. 【全局户型图】：看结构。**务必读取尺寸数值作为约束**。\n2. 【实勘矩阵图库】：这是客户上传的多个房间照片或视频截图序列。看真实层高采光。\n3. 【期望风格】：{style_logic}\n\n客户需求：【{user_requirements}】\n\n请输出：\n### 📍 空间尺寸与分割分析\n### 🛋️ 定制化全屋设计方案\n### 🎨 AI 效果图描述词 (英文 Midjourney格式)"
     else:
-        return f"You are a top interior designer.\nAnalyze structure from Floor Plan & Showhouse. **Must read dimensions**.\nStyle: {style_logic}\nNeeds: [{user_requirements}]\n\nOutput:\n### 📍 Spatial Analysis\n### 🛋️ Custom Global Design Plan\n### 🎨 AI Rendering Prompts"
+        return f"You are a top interior designer.\nAnalyze structure from Floor Plan & Showhouse gallery. **Must read dimensions**.\nStyle: {style_logic}\nNeeds: [{user_requirements}]\n\nOutput:\n### 📍 Spatial Analysis\n### 🛋️ Custom Global Design Plan\n### 🎨 AI Rendering Prompts"
 
 def get_drawing_prompt_desc(selected_room, plan_context, user_requirements, has_style_ref):
     return f"Highly detailed, photorealistic interior rendering of the {selected_room}, strict architectural integrity. Plan context: {plan_context[:200]}... User needs: {user_requirements}. Trending on ArtStation, 8k resolution, Unreal Engine 5 render."
@@ -94,7 +94,7 @@ def get_base64_image(uploaded_file):
         except: return None
     return None
 
-def extract_frames_from_video_base64(video_file, num_frames=6):
+def extract_frames_from_video_base64(video_file, num_frames=4):
     base64_frames = []
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{video_file.name.split('.')[-1]}") as tmp:
         tmp.write(video_file.getvalue())
@@ -119,7 +119,7 @@ def extract_frames_from_video_base64(video_file, num_frames=6):
     return base64_frames
 
 def auto_match_frame(engine, api_key, ep, frames_b64, room_name):
-    """【核心黑科技】利用视觉大脑在多帧中自动寻找最匹配的房间"""
+    """视觉大脑在多图矩阵中寻找最匹配的房间"""
     if not frames_b64 or len(frames_b64) <= 1: return 0
     prompt_text = f"Identify which of these {len(frames_b64)} sequential images best represents the '{room_name}'. Reply ONLY with the single integer index (0 to {len(frames_b64)-1}). No other text."
     try:
@@ -135,21 +135,10 @@ def auto_match_frame(engine, api_key, ep, frames_b64, room_name):
             for b64 in frames_b64: content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
             res = client.chat.completions.create(model=ep, messages=[{"role": "user", "content": content_list}], temperature=0.1)
             text = res.choices[0].message.content
-        # 提取第一个数字
         nums = re.findall(r'\d+', text)
         if nums and 0 <= int(nums[0]) < len(frames_b64): return int(nums[0])
         return 0
     except: return 0
-
-def append_media_to_doubao(content_list, uploaded_file, lang_code):
-    if not uploaded_file: return
-    if uploaded_file.name.lower().endswith(('mp4', 'mov', 'avi', 'gif')):
-        st.toast(LANG[lang_code]["info_extracting"])
-        for b64 in extract_frames_from_video_base64(uploaded_file, 6):
-            content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
-    else:
-        b64 = get_base64_image(uploaded_file)
-        if b64: content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
 
 # ==========================================
 # 3. Streamlit 界面及状态初始化
@@ -190,10 +179,15 @@ with col1:
 with col2:
     st.subheader(t["step2"])
     st.caption(t["step2_desc"])
-    showhouse_file = st.file_uploader("Showhouse Reality", type=["jpg", "png", "jpeg", "mp4", "gif", "mov"], key="sh", label_visibility="collapsed")
-    if showhouse_file:
-        if showhouse_file.name.lower().endswith(('mp4', 'mov', 'gif')): st.video(showhouse_file)
-        else: st.image(showhouse_file, width="stretch" if st.__version__ >= "1.30.0" else None, use_column_width=True)
+    # 【核心升级】：开启 accept_multiple_files=True
+    showhouse_files = st.file_uploader("Showhouse Reality", type=["jpg", "png", "jpeg", "mp4", "gif", "mov"], accept_multiple_files=True, key="sh", label_visibility="collapsed")
+    
+    if showhouse_files:
+        st.success(f"✅ 成功加载 {len(showhouse_files)} 个实景文件素材")
+        # 仅展示第一个文件作为预览，节省界面空间
+        first_file = showhouse_files[0]
+        if first_file.name.lower().endswith(('mp4', 'mov', 'gif')): st.video(first_file)
+        else: st.image(first_file, width="stretch" if st.__version__ >= "1.30.0" else None, use_column_width=True)
 
 st.markdown("---")
 
@@ -214,7 +208,7 @@ with col4:
 if st.button(t["btn_generate"], type="primary", use_container_width=True):
     if not api_key or (engine_choice == "字节豆包 (Doubao)" and not doubao_ep):
         st.error(t["warning_api"])
-    elif not floor_plan_file or not showhouse_file:
+    elif not floor_plan_file or not showhouse_files: # 修改为验证列表
         st.error(t["warning_file"])
     else:
         with st.spinner(t["status_analyzing"]):
@@ -223,11 +217,18 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
                 prompt_text = get_system_prompt(lang_code, user_req, has_style)
                 st.session_state.user_req_cache = user_req 
                 
-                # 缓存实勘图用于后续生图
-                if showhouse_file.name.lower().endswith(('mp4', 'mov', 'gif')):
-                    st.session_state.showhouse_b64s = extract_frames_from_video_base64(showhouse_file, 6)
-                else:
-                    st.session_state.showhouse_b64s = [get_base64_image(showhouse_file)]
+                # 【核心升级】：循环处理多文件，组装实景矩阵
+                st.toast(t["info_extracting"], icon="⏳")
+                st.session_state.showhouse_b64s = []
+                for f in showhouse_files:
+                    if f.name.lower().endswith(('mp4', 'mov', 'gif')):
+                        st.session_state.showhouse_b64s.extend(extract_frames_from_video_base64(f, 4)) # 每个视频抽4帧
+                    else:
+                        b64 = get_base64_image(f)
+                        if b64: st.session_state.showhouse_b64s.append(b64)
+                
+                # 矩阵限流保护：最多发送 20 张图给大脑，防止 Payload 超载
+                st.session_state.showhouse_b64s = st.session_state.showhouse_b64s[:20]
                 
                 if engine_choice == "Google Gemini 2.5":
                     client = genai.Client(api_key=api_key)
@@ -243,9 +244,13 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
                     client = OpenAI(api_key=api_key, base_url="https://ark.cn-beijing.volces.com/api/v3", timeout=60.0)
                     content_list = [{"type": "text", "text": prompt_text}]
                     content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{get_base64_image(floor_plan_file)}"}})
-                    for b64 in st.session_state.showhouse_b64s: content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+                    
+                    for b64 in st.session_state.showhouse_b64s: 
+                        content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+                        
                     if has_style: content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{get_base64_image(style_file)}"}})
                     
+                    st.toast("大脑正在结合多图矩阵写方案...", icon="🧠")
                     res = client.chat.completions.create(model=doubao_ep, messages=[{"role": "user", "content": content_list}])
                     st.session_state.design_result = res.choices[0].message.content
 
@@ -266,7 +271,7 @@ if st.session_state.design_result:
     col5, col6 = st.columns([1, 1])
     with col5:
         selected_room = st.selectbox(t["label_drawing_room"], t["option_drawing_room"])
-        st.info(f"👁️ **AI 智能寻帧已就绪**。AI将自动从您上传的视频/图组中寻找【{selected_room}】。如果您想强制指定视角，也可以在下方手动上传底图。")
+        st.info(f"👁️ **AI 智能寻帧已就绪**。AI将自动从您上传的多图矩阵中寻找【{selected_room}】。如果您想强制指定特定视角，也可以在下方手动上传底图。")
         room_reality_file = st.file_uploader(f"上传【{selected_room}】实景图 (选填/覆盖用)", type=["jpg", "png", "jpeg"], key="room_reality")
         draw_key = api_key if engine_choice == "字节豆包 (Doubao)" else st.sidebar.text_input("输入豆包 API Key 进行绘图", type="password")
         
@@ -286,7 +291,7 @@ if st.session_state.design_result:
                         st.toast("使用人工覆盖底图...", icon="✅")
                         current_reality_b64 = get_base64_image(room_reality_file)
                     else:
-                        st.toast(f"正在启动视觉大脑，在视频帧中搜索【{selected_room}】...", icon="🧠")
+                        st.toast(f"正在启动视觉大脑，在多图矩阵中搜索【{selected_room}】...", icon="🧠")
                         matched_idx = auto_match_frame(engine_choice, api_key, doubao_ep, st.session_state.showhouse_b64s, selected_room)
                         st.toast(f"✅ AI 锁定第 {matched_idx + 1} 个画面作为结构骨架！", icon="🎯")
                         if st.session_state.showhouse_b64s: current_reality_b64 = st.session_state.showhouse_b64s[matched_idx]
