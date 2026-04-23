@@ -30,7 +30,7 @@ LANG = {
         "req_placeholder": "例如：现代中古，主卧需要衣帽间...",
         "btn_generate": "🪄 生成全屋分析与设计方案",
         "label_drawing_room": "选择要绘制效果图的房间:",
-        "option_drawing_room": ["Living Room", "Master Bedroom", "Bedroom 2", "Kitchen", "Elevator Hall"],
+        "option_drawing_room": ["大横厅 (Living Room)", "主卧 (Master Bedroom)", "次卧 (Bedroom 2)", "厨房 (Kitchen)", "电梯厅 (Elevator Hall)"],
         "btn_draw": "🎨 为所选房间渲染 3D 效果图",
         "warning_api": "请在侧边栏完善大脑和画笔的 API 密钥信息！",
         "warning_file": "请至少上传户型图和样板间参考！",
@@ -179,7 +179,7 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader(t["step1"])
     floor_plan_file = st.file_uploader("Floor Plan", type=["jpg", "png", "jpeg"], key="fp", label_visibility="collapsed")
-    if floor_plan_file: st.image(floor_plan_file, use_container_width=True)
+    if floor_plan_file: st.image(floor_plan_file, width="stretch" if st.__version__ >= "1.30.0" else None, use_column_width=True)
 
 with col2:
     st.subheader(t["step2"])
@@ -187,7 +187,7 @@ with col2:
     showhouse_file = st.file_uploader("Showhouse Reality", type=["jpg", "png", "jpeg", "mp4", "gif", "mov"], key="sh", label_visibility="collapsed")
     if showhouse_file:
         if showhouse_file.name.lower().endswith(('mp4', 'mov', 'gif')): st.video(showhouse_file)
-        else: st.image(showhouse_file, use_container_width=True)
+        else: st.image(showhouse_file, width="stretch" if st.__version__ >= "1.30.0" else None, use_column_width=True)
 
 st.markdown("---")
 
@@ -196,7 +196,7 @@ with col3:
     st.subheader(t["step3"])
     st.caption(t["step3_desc"])
     style_file = st.file_uploader("Style", type=["jpg", "png", "jpeg"], key="sf", label_visibility="collapsed")
-    if style_file: st.image(style_file, use_container_width=True)
+    if style_file: st.image(style_file, width="stretch" if st.__version__ >= "1.30.0" else None, use_column_width=True)
 
 with col4:
     st.subheader(t["step4"])
@@ -218,8 +218,22 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
                 st.session_state.user_req_cache = user_req # 缓存用户需求
                 
                 if engine_choice == "Google Gemini 2.5":
-                    # (Gemini 逻辑代码同上，忽略以缩短回复，你可以保留旧 Gemini 代码部分)
-                    st.session_state.design_result = "Gemini Global Plan Text (Skip Gemini logic in flaghip code to save length, you should keep the original Gemini code here)."
+                    client = genai.Client(api_key=api_key)
+                    contents = [prompt_text]
+                    def process_gemini_file(f):
+                        if f is None: return None
+                        if f.name.lower().endswith(('mp4', 'mov', 'gif')):
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{f.name.split('.')[-1]}") as tmp:
+                                tmp.write(f.getvalue())
+                                return client.files.upload(file=tmp.name)
+                        return Image.open(f)
+                    
+                    if floor_plan_file: contents.append(process_gemini_file(floor_plan_file))
+                    if showhouse_file: contents.append(process_gemini_file(showhouse_file))
+                    if style_file: contents.append(process_gemini_file(style_file))
+                    
+                    response = client.models.generate_content(model='gemini-2.5-flash', contents=contents)
+                    st.session_state.design_result = response.text
 
                 elif engine_choice == "字节豆包 (Doubao)":
                     client = OpenAI(api_key=api_key, base_url="https://ark.cn-beijing.volces.com/api/v3", timeout=60.0)
@@ -259,11 +273,9 @@ if st.session_state.design_result:
     col5, col6 = st.columns([2, 1])
     with col5:
         st.subheader("🖼️ AI 效果图渲染")
-        # 如果你想要全自动“有多少房间出多少图”，代码将变得非常复杂且不可控
-        # 这里采用更成熟、更可靠的“指定房间上传/投喂”交互，彻底解决张冠李戴问题
-        
+        # 让用户明确选择渲染哪个房间，彻底解决张冠李戴问题
         selected_room = st.selectbox(t["label_drawing_room"], t["option_drawing_room"])
-        st.caption(f"即将根据您的选择，精准选取样板间视频/帧组中的【{selected_room}】相关画面，结合 Cached 尺寸数值，严格遵循结构和风格参考进行渲染。这需要您在左侧配置 Draw EP（Seedream 接口）。")
+        st.caption(f"即将根据您的选择，精准提取【{selected_room}】相关画面与尺寸进行渲染。")
         
         # 即使是大脑选了Gemini，绘图也需要豆包的 API Key 和 Seedream 接入点
         draw_key = api_key if engine_choice == "字节豆包 (Doubao)" else st.sidebar.text_input("必须输入豆包 API Key 进行绘图", type="password")
@@ -276,33 +288,21 @@ if st.session_state.design_result:
                 try:
                     draw_client = OpenAI(api_key=draw_key, base_url="https://ark.cn-beijing.volces.com/api/v3", timeout=60.0)
                     
-                    # 组装参考图 (大脑缓存的多图中，精准投喂客厅、电梯厅，杜绝电梯厅摆沙发)
-                    # 业内成熟交互：让用户上传特定房间图。若强制AI全屋漫游，极易分错。
-                    ref_images = []
-                    
-                    # 逻辑处理：将整体描述文本发给大脑模型进行关键帧对齐，找出对应房间。
-                    # 为保持代码旗舰版简化、稳定运行，这里采用交互式的精准上传/匹配逻辑。
-                    # 这里假设视频帧组中，AI难以准确将电梯厅帧和客厅帧对齐，所以让用户在生图前明确选择。
-                    
-                    # 架构演进：大脑已经通过Vision Pro提取尺寸和分割分析文本。
-                    # Seedream 接收 prompt，参考图。Prompt 强描述尺寸/细节。
-                    # 这里精准投喂一幅样板间图片 (如选客厅投喂第1帧客厅帧，选电梯厅投喂电梯厅帧)
-                    # 杜绝电梯厅摆沙发的 Bug。
+                    # 【已修复】：实时判断当前界面是否上传了风格图
+                    current_has_style = style_file is not None
                     
                     drawing_prompt_desc = get_drawing_prompt_desc(
                         selected_room, 
-                        st.session_state.design_result, # 传入 Cached 全屋方案 context
-                        "Cached cachedcached showhouse reality context", # 传入Cached样板间现实 context 
+                        st.session_state.design_result, 
+                        "Strictly keep the structural layout from the uploaded reality image.", 
                         st.session_state.user_req_cache, 
-                        has_style_ref # 风格 reference
+                        current_has_style # 这里使用了修复后的正确变量
                     )
                     
-                    # 组装参考图：核心解决图生图误用电梯厅问题。这里投喂第1张样板间图作为底图。
-                    # 若用户要全屋图，应遍历图生图，为每个主要房间上传准确底图。简化版暂传第1张视频关键帧。
-                    # 杜绝电梯厅沙发的 Bug，这里精准选择客厅帧、电梯厅帧等进行投喂。
-                    
+                    # 组装参考图
+                    ref_images = []
                     current_reality_b64 = None
-                    if st.session_state.showhouse_b64s: current_reality_b64 = st.session_state.showhouse_b64s[0] # 简化版仍暂用第1张
+                    if st.session_state.showhouse_b64s: current_reality_b64 = st.session_state.showhouse_b64s[0] 
                     if current_reality_b64: ref_images.append(f"data:image/jpeg;base64,{current_reality_b64}")
                     
                     style_b64 = get_base64_image(style_file)
@@ -311,7 +311,7 @@ if st.session_state.design_result:
                     # 发起精准、spatial-aware 的绘图请求
                     imagesResponse = draw_client.images.generate(
                         model=doubao_draw_ep, 
-                        prompt=drawing_prompt_desc, # 强描述全屋分析 context
+                        prompt=drawing_prompt_desc, 
                         size="2K",
                         response_format="b64_json",
                         stream=True,
@@ -319,7 +319,7 @@ if st.session_state.design_result:
                             "image": ref_images if ref_images else None,
                             "watermark": False,
                             "sequential_image_generation": "auto",
-                            "sequential_image_generation_options": {"max_images": 1} # 简化版渲染1张
+                            "sequential_image_generation_options": {"max_images": 1} 
                         }
                     )
                     
@@ -330,7 +330,7 @@ if st.session_state.design_result:
                         if event.type in ["image_generation.partial_succeeded", "image_generation.succeeded"]:
                             if event.b64_json:
                                 image_data = base64.b64decode(event.b64_json)
-                                image_placeholder.image(image_data, caption=f"✨ {selected_room} AI 渲染渲染完成", use_container_width=True)
+                                image_placeholder.image(image_data, caption=f"✨ {selected_room} AI 渲染完成", width="stretch" if st.__version__ >= "1.30.0" else None, use_column_width=True)
                                 
                     st.toast(t["success_draw"])
                     
