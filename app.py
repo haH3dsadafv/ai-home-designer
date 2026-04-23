@@ -205,7 +205,7 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
                 
                 # 4. 调用最新模型 gemini-2.5-flash
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-1.5-flash',
                     contents=contents
                 )
                 
