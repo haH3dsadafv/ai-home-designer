@@ -5,6 +5,7 @@ import tempfile
 import base64
 import os
 import cv2
+import io
 from PIL import Image
 
 # ==========================================
@@ -30,7 +31,7 @@ LANG = {
         "btn_draw": "🎨 渲染 3D 效果图",
         "warning_api": "请在侧边栏完善必要的 API 密钥信息！",
         "warning_file": "请至少上传户型图和样板间参考！",
-        "info_extracting": "🎥 正在自动提取视频关键帧...",
+        "info_extracting": "🎥 正在自动提取并压缩视频关键帧...",
         "status_analyzing": "AI 大脑正在解析空间结构，生成方案中...",
         "status_drawing": "AI 画笔正在绘制空间效果图 (约 15 秒)...",
         "success": "✨ 方案设计完成！",
@@ -55,7 +56,7 @@ LANG = {
         "btn_draw": "🎨 Render 3D Image",
         "warning_api": "Please configure the API keys in the sidebar!",
         "warning_file": "Please upload at least a floor plan and showhouse!",
-        "info_extracting": "🎥 Auto-extracting key frames...",
+        "info_extracting": "🎥 Auto-extracting and compressing key frames...",
         "status_analyzing": "Analyzing the space... Please wait...",
         "status_drawing": "Rendering 3D image (approx. 15s)...",
         "success": "✨ Design Plan Completed!",
@@ -64,7 +65,7 @@ LANG = {
 }
 
 # ==========================================
-# 2. 核心提示词与辅助函数
+# 2. 核心提示词与辅助函数 (加入智能压缩)
 # ==========================================
 def get_system_prompt(language, user_requirements, has_style_ref):
     style_logic = "严格参考【期望风格图】的色调和材质。" if has_style_ref else f"完全根据需求：【{user_requirements}】来构思。"
@@ -74,26 +75,49 @@ def get_system_prompt(language, user_requirements, has_style_ref):
         return f"You are a top interior designer.\nAnalyze structure from Floor Plan and reality from Showhouse images/frames.\nStyle: {style_logic}\n\nOutput:\n### 📍 Spatial Analysis\n### 🛋️ Custom Design Plan\n### 🎨 AI Rendering Prompts"
 
 def get_base64_image(uploaded_file):
+    """处理静态图片转 Base64（带自动等比例压缩，防请求超载）"""
     if uploaded_file and uploaded_file.name.lower().endswith(('jpg', 'jpeg', 'png', 'webp')):
-        return base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
+        try:
+            img = Image.open(uploaded_file)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            # 限制最大尺寸为 1024x1024，保持比例
+            img.thumbnail((1024, 1024))
+            buffered = io.BytesIO()
+            # 压缩为 85% 质量的 JPEG
+            img.save(buffered, format="JPEG", quality=85)
+            return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        except Exception as e:
+            st.error(f"图片压缩失败: {e}")
+            return None
     return None
 
 def extract_frames_from_video_base64(video_file, num_frames=6):
+    """从视频中均匀提取关键帧，自动缩放并转化为 Base64"""
     base64_frames = []
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{video_file.name.split('.')[-1]}") as tmp:
         tmp.write(video_file.getvalue())
         tmp_path = tmp.name
+        
     cap = cv2.VideoCapture(tmp_path)
     if not cap.isOpened(): return base64_frames
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
     if total_frames > 0:
         step = max(1, total_frames // num_frames)
         for i in range(num_frames):
             cap.set(cv2.CAP_PROP_POS_FRAMES, min(i * step, total_frames - 1))
             ret, frame = cap.read()
             if ret:
-                _, buffer = cv2.imencode('.jpg', frame)
+                # 动态缩放视频帧到最大 1024
+                h, w = frame.shape[:2]
+                scale = min(1024/w, 1024/h)
+                if scale < 1:
+                    frame = cv2.resize(frame, (int(w*scale), int(h*scale)))
+                # 压缩为 85% 质量的 JPEG
+                _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
                 base64_frames.append(base64.b64encode(buffer).decode('utf-8'))
+                
     cap.release()
     try: os.remove(tmp_path)
     except: pass
@@ -115,7 +139,7 @@ def append_media_to_doubao(content_list, uploaded_file, lang_code):
 # ==========================================
 st.set_page_config(page_title="AI Home Designer", layout="wide")
 
-# 初始化 session_state
+# 初始化 session_state，用于保存文字分析结果，避免点击绘图按钮时文字消失
 if "design_result" not in st.session_state:
     st.session_state.design_result = None
 if "user_req_cache" not in st.session_state:
@@ -138,6 +162,7 @@ else:
     doubao_ep = st.sidebar.text_input(t["doubao_ep"], placeholder="ep-... (Vision Pro)")
 
 st.sidebar.markdown("---")
+# 绘图始终使用豆包的 Seedream 模型
 doubao_draw_ep = st.sidebar.text_input(t["doubao_draw_ep"], placeholder="ep-... (Seedream)", help="用于渲染最终效果图")
 
 st.title(t["title"])
@@ -146,8 +171,7 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader(t["step1"])
     floor_plan_file = st.file_uploader("Floor Plan", type=["jpg", "png", "jpeg"], key="fp", label_visibility="collapsed")
-    # 已替换：使用 width="stretch"
-    if floor_plan_file: st.image(floor_plan_file, width="stretch")
+    if floor_plan_file: st.image(floor_plan_file, use_container_width=True)
 
 with col2:
     st.subheader(t["step2"])
@@ -155,8 +179,7 @@ with col2:
     showhouse_file = st.file_uploader("Showhouse", type=["jpg", "png", "jpeg", "mp4", "gif", "mov"], key="sh", label_visibility="collapsed")
     if showhouse_file:
         if showhouse_file.name.lower().endswith(('mp4', 'mov')): st.video(showhouse_file)
-        # 已替换：使用 width="stretch"
-        else: st.image(showhouse_file, width="stretch")
+        else: st.image(showhouse_file, use_container_width=True)
 
 st.markdown("---")
 
@@ -167,8 +190,7 @@ with col3:
     style_file = st.file_uploader("Style", type=["jpg", "png", "jpeg", "mp4", "gif"], key="sf", label_visibility="collapsed")
     if style_file:
         if style_file.name.lower().endswith(('mp4', 'mov')): st.video(style_file)
-        # 已替换：使用 width="stretch"
-        else: st.image(style_file, width="stretch")
+        else: st.image(style_file, use_container_width=True)
 
 with col4:
     st.subheader(t["step4"])
@@ -177,8 +199,7 @@ with col4:
 # ==========================================
 # 4. 大脑处理逻辑 (文本生成)
 # ==========================================
-# 已替换：按钮宽度属性
-if st.button(t["btn_generate"], type="primary", width="stretch"):
+if st.button(t["btn_generate"], type="primary", use_container_width=True):
     if not api_key or (engine_choice == "字节豆包 (Doubao)" and not doubao_ep):
         st.error(t["warning_api"])
     elif not floor_plan_file or not showhouse_file:
@@ -188,7 +209,7 @@ if st.button(t["btn_generate"], type="primary", width="stretch"):
             try:
                 has_style = style_file is not None
                 prompt_text = get_system_prompt(lang_code, user_req, has_style)
-                st.session_state.user_req_cache = user_req
+                st.session_state.user_req_cache = user_req # 缓存用户需求供绘图使用
                 
                 if engine_choice == "Google Gemini 2.5":
                     client = genai.Client(api_key=api_key)
@@ -209,11 +230,15 @@ if st.button(t["btn_generate"], type="primary", width="stretch"):
                     st.session_state.design_result = response.text
 
                 elif engine_choice == "字节豆包 (Doubao)":
+                    # 加入了 timeout=60.0 防卡死机制
                     client = OpenAI(api_key=api_key, base_url="https://ark.cn-beijing.volces.com/api/v3", timeout=60.0)
                     content_list = [{"type": "text", "text": prompt_text}]
+                    
+                    st.toast("正在压缩并处理图片/视频...", icon="⏳")
                     append_media_to_doubao(content_list, floor_plan_file, lang_code)
                     append_media_to_doubao(content_list, showhouse_file, lang_code)
                     if has_style: append_media_to_doubao(content_list, style_file, lang_code)
+                    st.toast("媒体处理完成，正在请求豆包大脑...", icon="🚀")
                     
                     response = client.chat.completions.create(model=doubao_ep, messages=[{"role": "user", "content": content_list}])
                     st.session_state.design_result = response.choices[0].message.content
@@ -224,7 +249,7 @@ if st.button(t["btn_generate"], type="primary", width="stretch"):
                 st.error(f"分析错误: {e}")
 
 # ==========================================
-# 5. 画笔处理逻辑 (图像渲染)
+# 5. 画笔处理逻辑 (图像渲染 - 仅在有文字方案后显示)
 # ==========================================
 if st.session_state.design_result:
     st.markdown("---")
@@ -233,8 +258,9 @@ if st.session_state.design_result:
     st.markdown("---")
     st.subheader("🖼️ AI 空间效果图渲染")
     
-    # 已替换：按钮宽度属性
-    if st.button(t["btn_draw"], type="primary", width="stretch"):
+    # 点击渲染按钮
+    if st.button(t["btn_draw"], type="primary", use_container_width=True):
+        # 即使是大脑选了Gemini，绘图也需要豆包的 API Key 和 Seedream 接入点
         draw_key = api_key if engine_choice == "字节豆包 (Doubao)" else st.sidebar.text_input("必须输入豆包 API Key 进行绘图", type="password")
         
         if not draw_key or not doubao_draw_ep:
@@ -242,16 +268,20 @@ if st.session_state.design_result:
         else:
             with st.spinner(t["status_drawing"]):
                 try:
+                    # 加入了 timeout=60.0 防卡死机制
                     draw_client = OpenAI(api_key=draw_key, base_url="https://ark.cn-beijing.volces.com/api/v3", timeout=60.0)
                     
+                    # 组装参考图 (优先用样板间作为底图，再加风格图参考)
                     ref_images = []
                     sh_b64 = get_base64_image(showhouse_file)
                     if sh_b64: ref_images.append(f"data:image/jpeg;base64,{sh_b64}")
                     style_b64 = get_base64_image(style_file)
                     if style_b64: ref_images.append(f"data:image/jpeg;base64,{style_b64}")
                     
+                    # 组装强力绘图 Prompt
                     draw_prompt = f"Interior design, highly detailed, photorealistic, 8k, Unreal Engine 5 render, cinematic lighting. Based on user requirements: {st.session_state.user_req_cache}"
                     
+                    # 发起绘图请求
                     imagesResponse = draw_client.images.generate(
                         model=doubao_draw_ep, 
                         prompt=draw_prompt,
@@ -266,14 +296,14 @@ if st.session_state.design_result:
                         }
                     )
                     
+                    # 解析流式图片流
                     image_placeholder = st.empty()
                     for event in imagesResponse:
                         if event is None: continue
                         if event.type in ["image_generation.partial_succeeded", "image_generation.succeeded"]:
                             if event.b64_json:
                                 image_data = base64.b64decode(event.b64_json)
-                                # 已替换：使用 width="stretch"
-                                image_placeholder.image(image_data, caption=t["success_draw"], width="stretch")
+                                image_placeholder.image(image_data, caption=t["success_draw"], use_container_width=True)
                                 
                     st.toast(t["success_draw"])
                     
