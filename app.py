@@ -1,6 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
-import os
+from google import genai
 import tempfile
 from PIL import Image
 
@@ -51,28 +50,27 @@ LANG = {
 }
 
 # ==========================================
-# 2. 媒体处理辅助函数
+# 2. 媒体处理辅助函数 (适配新版 API)
 # ==========================================
-def process_uploaded_file(uploaded_file):
+def process_uploaded_file(client, uploaded_file):
     """根据文件类型，转化为 Gemini 可接受的格式"""
     if uploaded_file is None:
         return None
     
     file_extension = uploaded_file.name.split('.')[-1].lower()
     
-    # 处理图片
+    # 处理图片 (PIL Image 可以直接传给新版 SDK)
     if file_extension in ['jpg', 'jpeg', 'png', 'webp']:
         return Image.open(uploaded_file)
     
-    # 处理视频/动图 (存入临时文件供 Gemini API 上传解析)
+    # 处理视频/动图 (存入临时文件供 Client 上传)
     elif file_extension in ['mp4', 'mov', 'avi', 'gif']:
-        # 创建临时文件
         with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as tmp_file:
             tmp_file.write(uploaded_file.read())
             tmp_file_path = tmp_file.name
         
-        # 上传到 Gemini
-        uploaded_video = genai.upload_file(path=tmp_file_path)
+        # 使用新版 SDK 上传文件
+        uploaded_video = client.files.upload(file=tmp_file_path)
         return uploaded_video
     
     return None
@@ -141,7 +139,6 @@ api_key = st.sidebar.text_input(t["api_key_label"], type="password", help="从 G
 
 st.title(t["title"])
 
-# 上半部分：结构与现状
 col1, col2 = st.columns(2)
 with col1:
     st.subheader(t["step1"])
@@ -161,7 +158,6 @@ with col2:
 
 st.markdown("---")
 
-# 下半部分：风格与需求
 col3, col4 = st.columns(2)
 with col3:
     st.subheader(t["step3"])
@@ -178,7 +174,7 @@ with col4:
     user_req = st.text_area("Requirements", placeholder=t["req_placeholder"], height=150, label_visibility="collapsed")
 
 # ==========================================
-# 5. 核心处理逻辑
+# 5. 核心处理逻辑 (全新 Gemini 2.5 API)
 # ==========================================
 if st.button(t["btn_generate"], type="primary", use_container_width=True):
     if not api_key:
@@ -188,27 +184,30 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
     else:
         with st.spinner(t["status_analyzing"]):
             try:
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-pro')  
+                # 1. 初始化新版 Client
+                client = genai.Client(api_key=api_key)
                 
-                # 构建输入内容列表
+                # 2. 构建输入内容列表
                 has_style = style_file is not None
                 prompt_text = get_system_prompt(lang_code, user_req, has_style)
                 contents = [prompt_text]
                 
-                # 处理并添加媒体文件
-                fp_media = process_uploaded_file(floor_plan_file)
+                # 3. 处理并添加媒体文件 (注意这里将 client 传入以便上传视频)
+                fp_media = process_uploaded_file(client, floor_plan_file)
                 if fp_media: contents.append(fp_media)
                 
-                sh_media = process_uploaded_file(showhouse_file)
+                sh_media = process_uploaded_file(client, showhouse_file)
                 if sh_media: contents.append(sh_media)
                 
                 if has_style:
-                    style_media = process_uploaded_file(style_file)
+                    style_media = process_uploaded_file(client, style_file)
                     if style_media: contents.append(style_media)
                 
-                # 请求 AI
-                response = model.generate_content(contents)
+                # 4. 调用最新模型 gemini-2.5-flash
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=contents
+                )
                 
                 # 展示结果
                 st.success(t["success"])
