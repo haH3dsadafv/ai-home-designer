@@ -189,7 +189,7 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
         with st.spinner(t["status_analyzing"]):
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-pro-latest')
+                model = genai.GenerativeModel('gemini-1.5-pro')  
                 
                 # 构建输入内容列表
                 has_style = style_file is not None
