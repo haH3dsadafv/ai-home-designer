@@ -115,7 +115,7 @@ def append_media_to_doubao(content_list, uploaded_file, lang_code):
 # ==========================================
 st.set_page_config(page_title="AI Home Designer", layout="wide")
 
-# 初始化 session_state，用于保存文字分析结果，避免点击绘图按钮时文字消失
+# 初始化 session_state
 if "design_result" not in st.session_state:
     st.session_state.design_result = None
 if "user_req_cache" not in st.session_state:
@@ -138,7 +138,6 @@ else:
     doubao_ep = st.sidebar.text_input(t["doubao_ep"], placeholder="ep-... (Vision Pro)")
 
 st.sidebar.markdown("---")
-# 绘图始终使用豆包的 Seedream 模型
 doubao_draw_ep = st.sidebar.text_input(t["doubao_draw_ep"], placeholder="ep-... (Seedream)", help="用于渲染最终效果图")
 
 st.title(t["title"])
@@ -147,7 +146,8 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader(t["step1"])
     floor_plan_file = st.file_uploader("Floor Plan", type=["jpg", "png", "jpeg"], key="fp", label_visibility="collapsed")
-    if floor_plan_file: st.image(floor_plan_file, use_container_width=True)
+    # 已替换：使用 width="stretch"
+    if floor_plan_file: st.image(floor_plan_file, width="stretch")
 
 with col2:
     st.subheader(t["step2"])
@@ -155,7 +155,8 @@ with col2:
     showhouse_file = st.file_uploader("Showhouse", type=["jpg", "png", "jpeg", "mp4", "gif", "mov"], key="sh", label_visibility="collapsed")
     if showhouse_file:
         if showhouse_file.name.lower().endswith(('mp4', 'mov')): st.video(showhouse_file)
-        else: st.image(showhouse_file, use_container_width=True)
+        # 已替换：使用 width="stretch"
+        else: st.image(showhouse_file, width="stretch")
 
 st.markdown("---")
 
@@ -166,7 +167,8 @@ with col3:
     style_file = st.file_uploader("Style", type=["jpg", "png", "jpeg", "mp4", "gif"], key="sf", label_visibility="collapsed")
     if style_file:
         if style_file.name.lower().endswith(('mp4', 'mov')): st.video(style_file)
-        else: st.image(style_file, use_container_width=True)
+        # 已替换：使用 width="stretch"
+        else: st.image(style_file, width="stretch")
 
 with col4:
     st.subheader(t["step4"])
@@ -175,7 +177,8 @@ with col4:
 # ==========================================
 # 4. 大脑处理逻辑 (文本生成)
 # ==========================================
-if st.button(t["btn_generate"], type="primary", use_container_width=True):
+# 已替换：按钮宽度属性
+if st.button(t["btn_generate"], type="primary", width="stretch"):
     if not api_key or (engine_choice == "字节豆包 (Doubao)" and not doubao_ep):
         st.error(t["warning_api"])
     elif not floor_plan_file or not showhouse_file:
@@ -185,7 +188,7 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
             try:
                 has_style = style_file is not None
                 prompt_text = get_system_prompt(lang_code, user_req, has_style)
-                st.session_state.user_req_cache = user_req # 缓存用户需求供绘图使用
+                st.session_state.user_req_cache = user_req
                 
                 if engine_choice == "Google Gemini 2.5":
                     client = genai.Client(api_key=api_key)
@@ -206,7 +209,7 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
                     st.session_state.design_result = response.text
 
                 elif engine_choice == "字节豆包 (Doubao)":
-                    client = OpenAI(api_key=api_key, base_url="https://ark.cn-beijing.volces.com/api/v3")
+                    client = OpenAI(api_key=api_key, base_url="https://ark.cn-beijing.volces.com/api/v3", timeout=60.0)
                     content_list = [{"type": "text", "text": prompt_text}]
                     append_media_to_doubao(content_list, floor_plan_file, lang_code)
                     append_media_to_doubao(content_list, showhouse_file, lang_code)
@@ -221,7 +224,7 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
                 st.error(f"分析错误: {e}")
 
 # ==========================================
-# 5. 画笔处理逻辑 (图像渲染 - 仅在有文字方案后显示)
+# 5. 画笔处理逻辑 (图像渲染)
 # ==========================================
 if st.session_state.design_result:
     st.markdown("---")
@@ -230,9 +233,8 @@ if st.session_state.design_result:
     st.markdown("---")
     st.subheader("🖼️ AI 空间效果图渲染")
     
-    # 点击渲染按钮
-    if st.button(t["btn_draw"], type="primary", use_container_width=True):
-        # 即使是大脑选了Gemini，绘图也需要豆包的 API Key 和 Seedream 接入点
+    # 已替换：按钮宽度属性
+    if st.button(t["btn_draw"], type="primary", width="stretch"):
         draw_key = api_key if engine_choice == "字节豆包 (Doubao)" else st.sidebar.text_input("必须输入豆包 API Key 进行绘图", type="password")
         
         if not draw_key or not doubao_draw_ep:
@@ -240,19 +242,16 @@ if st.session_state.design_result:
         else:
             with st.spinner(t["status_drawing"]):
                 try:
-                    draw_client = OpenAI(api_key=draw_key, base_url="https://ark.cn-beijing.volces.com/api/v3")
+                    draw_client = OpenAI(api_key=draw_key, base_url="https://ark.cn-beijing.volces.com/api/v3", timeout=60.0)
                     
-                    # 组装参考图 (优先用样板间作为底图，再加风格图参考)
                     ref_images = []
                     sh_b64 = get_base64_image(showhouse_file)
                     if sh_b64: ref_images.append(f"data:image/jpeg;base64,{sh_b64}")
                     style_b64 = get_base64_image(style_file)
                     if style_b64: ref_images.append(f"data:image/jpeg;base64,{style_b64}")
                     
-                    # 组装强力绘图 Prompt
                     draw_prompt = f"Interior design, highly detailed, photorealistic, 8k, Unreal Engine 5 render, cinematic lighting. Based on user requirements: {st.session_state.user_req_cache}"
                     
-                    # 发起绘图请求
                     imagesResponse = draw_client.images.generate(
                         model=doubao_draw_ep, 
                         prompt=draw_prompt,
@@ -267,14 +266,14 @@ if st.session_state.design_result:
                         }
                     )
                     
-                    # 解析流式图片流
                     image_placeholder = st.empty()
                     for event in imagesResponse:
                         if event is None: continue
                         if event.type in ["image_generation.partial_succeeded", "image_generation.succeeded"]:
                             if event.b64_json:
                                 image_data = base64.b64decode(event.b64_json)
-                                image_placeholder.image(image_data, caption=t["success_draw"], use_container_width=True)
+                                # 已替换：使用 width="stretch"
+                                image_placeholder.image(image_data, caption=t["success_draw"], width="stretch")
                                 
                     st.toast(t["success_draw"])
                     
