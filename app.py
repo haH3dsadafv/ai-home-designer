@@ -12,127 +12,114 @@ from PIL import Image
 # ==========================================
 LANG = {
     "CN": {
-        "title": "🏠 智能户型设计助手 (全球双引擎版)",
+        "title": "🏠 智能户型设计助手 (旗舰版)",
         "sidebar_title": "⚙️ 系统设置",
-        "engine_label": "🤖 选择 AI 引擎",
+        "engine_label": "🤖 选择大脑引擎 (文本分析)",
         "gemini_key": "Gemini API Key (海外节点)",
-        "doubao_key": "豆包 API Key (国内节点)",
-        "doubao_ep": "豆包 推理接入点 (Endpoint ID)",
+        "doubao_key": "豆包 API Key (火山引擎通用)",
+        "doubao_ep": "豆包 大脑接入点 (Vision Pro EP)",
+        "doubao_draw_ep": "豆包 画笔接入点 (Seedream EP)",
         "step1": "📍 步骤 1: 上传户型图 (必填项)",
         "step2": "🏢 步骤 2: 样板间/现场实拍",
-        "step2_desc": "支持图片。若上传视频，AI将自动提取关键画面分析。",
+        "step2_desc": "支持图片。若上传视频，AI将自动提取关键画面。",
         "step3": "🎨 步骤 3: 期望风格参考 (选填项)",
         "step3_desc": "上传您真正喜欢的装修风格参考。",
         "step4": "💬 步骤 4: 具体改造需求",
         "req_placeholder": "例如：想要现代极简风格，主卧需要衣帽间...",
         "btn_generate": "🪄 开始智能设计",
-        "warning_api": "请在侧边栏完善当前引擎的 API 密钥信息！",
+        "btn_draw": "🎨 渲染 3D 效果图",
+        "warning_api": "请在侧边栏完善必要的 API 密钥信息！",
         "warning_file": "请至少上传户型图和样板间参考！",
-        "info_extracting": "🎥 正在从视频中自动提取 6 张关键帧用于空间分析...",
-        "status_analyzing": "AI 引擎正在全速解析空间结构，生成方案中...",
-        "success": "✨ 设计完成！"
+        "info_extracting": "🎥 正在自动提取视频关键帧...",
+        "status_analyzing": "AI 大脑正在解析空间结构，生成方案中...",
+        "status_drawing": "AI 画笔正在绘制空间效果图 (约 15 秒)...",
+        "success": "✨ 方案设计完成！",
+        "success_draw": "🖼️ 效果图渲染完毕！"
     },
     "EN": {
-        "title": "🏠 AI Home Designer (Dual Engine)",
+        "title": "🏠 AI Home Designer (Ultimate)",
         "sidebar_title": "⚙️ Settings",
-        "engine_label": "🤖 Select AI Engine",
-        "gemini_key": "Gemini API Key (Global)",
-        "doubao_key": "Doubao API Key (China)",
-        "doubao_ep": "Doubao Endpoint ID",
+        "engine_label": "🤖 Select Brain Engine",
+        "gemini_key": "Gemini API Key",
+        "doubao_key": "Doubao API Key",
+        "doubao_ep": "Doubao Brain Endpoint (Vision Pro)",
+        "doubao_draw_ep": "Doubao Drawing Endpoint (Seedream)",
         "step1": "📍 Step 1: Floor Plan (Required)",
         "step2": "🏢 Step 2: Showhouse / Reality",
-        "step2_desc": "Images/Videos. Auto key-frame extraction for videos.",
+        "step2_desc": "Images/Videos. Auto key-frame extraction.",
         "step3": "🎨 Step 3: Desired Style (Optional)",
         "step3_desc": "Upload a reference for the desired style.",
         "step4": "💬 Step 4: Specific Requirements",
         "req_placeholder": "e.g., Modern minimalist, walk-in closet...",
         "btn_generate": "🪄 Generate Design",
-        "warning_api": "Please configure the API key for the selected engine!",
+        "btn_draw": "🎨 Render 3D Image",
+        "warning_api": "Please configure the API keys in the sidebar!",
         "warning_file": "Please upload at least a floor plan and showhouse!",
-        "info_extracting": "🎥 Auto-extracting 6 key frames from video...",
-        "status_analyzing": "AI Engine is analyzing the space... Please wait...",
-        "success": "✨ Design Completed!"
+        "info_extracting": "🎥 Auto-extracting key frames...",
+        "status_analyzing": "Analyzing the space... Please wait...",
+        "status_drawing": "Rendering 3D image (approx. 15s)...",
+        "success": "✨ Design Plan Completed!",
+        "success_draw": "🖼️ Rendering Completed!"
     }
 }
 
 # ==========================================
-# 2. 核心提示词
+# 2. 核心提示词与辅助函数
 # ==========================================
 def get_system_prompt(language, user_requirements, has_style_ref):
-    style_logic_cn = "我提供了【期望风格参考图】，请严格按照该参考的色调、材质和软装氛围进行设计。" if has_style_ref else "我没有提供具体的风格参考图，请完全根据我的【具体改造需求】文字描述来构思风格。"
-    style_logic_en = "I have provided a [Desired Style Reference]. Please strictly follow its vibe." if has_style_ref else "I have not provided a style reference image. Please conceptualize based on my text."
-
+    style_logic = "严格参考【期望风格图】的色调和材质。" if has_style_ref else f"完全根据需求：【{user_requirements}】来构思。"
     if language == "CN":
-        return f"你是一名顶尖全栈室内设计师。\n1. 【户型图】：理解硬性尺寸和格局。\n2. 【样板间实勘】：理解真实层高、采光，忽略其老旧风格。如果你看到多张相似视角的图片，那是从实拍视频中提取的关键帧组合。\n3. 【期望风格】：{style_logic_cn}\n\n客户需求：【{user_requirements}】\n\n请输出：\n### 📍 空间结构与实勘分析\n### 🛋️ 定制化设计方案\n### 🎨 AI 效果图提示词 (英文，Midjourney格式)"
+        return f"你是一名顶尖全栈室内设计师。\n1. 【户型图】：看结构。\n2. 【实勘图/视频帧】：看真实层高采光，忽略老旧风格。\n3. 【期望风格】：{style_logic}\n\n请输出：\n### 📍 空间分析\n### 🛋️ 定制方案\n### 🎨 AI 提示词 (英文Midjourney格式)"
     else:
-        return f"You are a top interior designer.\n1. [Floor Plan]: Structure/layout.\n2. [Reality]: Lighting/volume. If you see multiple frames, they are keyframes extracted from a video.\n3. [Style]: {style_logic_en}\n\nNeeds: [{user_requirements}]\n\nOutput:\n### 📍 Spatial Analysis\n### 🛋️ Custom Design Plan\n### 🎨 AI Rendering Prompts (Midjourney/SD format)"
+        return f"You are a top interior designer.\nAnalyze structure from Floor Plan and reality from Showhouse images/frames.\nStyle: {style_logic}\n\nOutput:\n### 📍 Spatial Analysis\n### 🛋️ Custom Design Plan\n### 🎨 AI Rendering Prompts"
 
-# ==========================================
-# 3. 媒体处理辅助函数 (视频抽帧核心算法)
-# ==========================================
 def get_base64_image(uploaded_file):
-    """处理静态图片转 Base64"""
-    if uploaded_file:
+    if uploaded_file and uploaded_file.name.lower().endswith(('jpg', 'jpeg', 'png', 'webp')):
         return base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
     return None
 
 def extract_frames_from_video_base64(video_file, num_frames=6):
-    """从上传的视频流中均匀提取关键帧，转化为 Base64 数组"""
     base64_frames = []
-    
-    # 视频处理必须先落盘为临时文件
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{video_file.name.split('.')[-1]}") as tmp:
         tmp.write(video_file.getvalue())
         tmp_path = tmp.name
-
     cap = cv2.VideoCapture(tmp_path)
-    if not cap.isOpened():
-        return base64_frames
-
+    if not cap.isOpened(): return base64_frames
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if total_frames > 0:
-        # 计算等距采样的步长
         step = max(1, total_frames // num_frames)
-        
         for i in range(num_frames):
-            frame_id = min(i * step, total_frames - 1)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, min(i * step, total_frames - 1))
             ret, frame = cap.read()
             if ret:
-                # 将 BGR 帧编码为 JPEG，再转为 Base64
                 _, buffer = cv2.imencode('.jpg', frame)
-                b64_str = base64.b64encode(buffer).decode('utf-8')
-                base64_frames.append(b64_str)
-
+                base64_frames.append(base64.b64encode(buffer).decode('utf-8'))
     cap.release()
-    try:
-        os.remove(tmp_path) # 用完清理垃圾
-    except:
-        pass
-        
+    try: os.remove(tmp_path)
+    except: pass
     return base64_frames
 
 def append_media_to_doubao(content_list, uploaded_file, lang_code):
-    """智能判断文件类型：图片直接加，视频自动抽帧加"""
-    if not uploaded_file:
-        return
-        
+    if not uploaded_file: return
     ext = uploaded_file.name.lower().split('.')[-1]
-    
     if ext in ['mp4', 'mov', 'avi']:
-        st.toast(LANG[lang_code]["info_extracting"]) # 页面右下角弹出提示
-        b64_frames = extract_frames_from_video_base64(uploaded_file, num_frames=6)
-        for b64 in b64_frames:
+        st.toast(LANG[lang_code]["info_extracting"])
+        for b64 in extract_frames_from_video_base64(uploaded_file, 6):
             content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
     else:
         b64 = get_base64_image(uploaded_file)
-        if b64:
-            content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+        if b64: content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
 
 # ==========================================
-# 4. Streamlit 界面逻辑
+# 3. Streamlit 界面及状态初始化
 # ==========================================
-st.set_page_config(page_title="AI Home Designer Dual", layout="wide")
+st.set_page_config(page_title="AI Home Designer", layout="wide")
+
+# 初始化 session_state，用于保存文字分析结果，避免点击绘图按钮时文字消失
+if "design_result" not in st.session_state:
+    st.session_state.design_result = None
+if "user_req_cache" not in st.session_state:
+    st.session_state.user_req_cache = ""
 
 st.sidebar.selectbox("Language / 语言", ["CN", "EN"], key="lang")
 lang_code = st.session_state.lang
@@ -148,7 +135,11 @@ if engine_choice == "Google Gemini 2.5":
     api_key = st.sidebar.text_input(t["gemini_key"], type="password")
 else:
     api_key = st.sidebar.text_input(t["doubao_key"], type="password")
-    doubao_ep = st.sidebar.text_input(t["doubao_ep"], placeholder="ep-xxxxxx-xxxx")
+    doubao_ep = st.sidebar.text_input(t["doubao_ep"], placeholder="ep-... (Vision Pro)")
+
+st.sidebar.markdown("---")
+# 绘图始终使用豆包的 Seedream 模型
+doubao_draw_ep = st.sidebar.text_input(t["doubao_draw_ep"], placeholder="ep-... (Seedream)", help="用于渲染最终效果图")
 
 st.title(t["title"])
 
@@ -182,7 +173,7 @@ with col4:
     user_req = st.text_area("Requirements", placeholder=t["req_placeholder"], height=150, label_visibility="collapsed")
 
 # ==========================================
-# 5. 核心处理逻辑 (双引擎路由)
+# 4. 大脑处理逻辑 (文本生成)
 # ==========================================
 if st.button(t["btn_generate"], type="primary", use_container_width=True):
     if not api_key or (engine_choice == "字节豆包 (Doubao)" and not doubao_ep):
@@ -194,14 +185,11 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
             try:
                 has_style = style_file is not None
                 prompt_text = get_system_prompt(lang_code, user_req, has_style)
+                st.session_state.user_req_cache = user_req # 缓存用户需求供绘图使用
                 
-                # ------------------------------------
-                # 路由 A：Gemini 原生视频解析
-                # ------------------------------------
                 if engine_choice == "Google Gemini 2.5":
                     client = genai.Client(api_key=api_key)
                     contents = [prompt_text]
-                    
                     def process_gemini_file(f):
                         if f is None: return None
                         if f.name.lower().endswith(('mp4', 'mov', 'gif')):
@@ -214,35 +202,81 @@ if st.button(t["btn_generate"], type="primary", use_container_width=True):
                     if showhouse_file: contents.append(process_gemini_file(showhouse_file))
                     if style_file: contents.append(process_gemini_file(style_file))
                     
-                    response = client.models.generate_content(
-                        model='gemini-2.5-flash',
-                        contents=contents
-                    )
-                    st.success(t["success"])
-                    st.markdown(response.text)
+                    response = client.models.generate_content(model='gemini-2.5-flash', contents=contents)
+                    st.session_state.design_result = response.text
 
-                # ------------------------------------
-                # 路由 B：豆包 智能抽帧解析
-                # ------------------------------------
                 elif engine_choice == "字节豆包 (Doubao)":
                     client = OpenAI(api_key=api_key, base_url="https://ark.cn-beijing.volces.com/api/v3")
-                    
                     content_list = [{"type": "text", "text": prompt_text}]
-                    
-                    # 依次处理三个文件，遇到视频会自动拆成 6 张图塞进去
                     append_media_to_doubao(content_list, floor_plan_file, lang_code)
                     append_media_to_doubao(content_list, showhouse_file, lang_code)
-                    if has_style:
-                        append_media_to_doubao(content_list, style_file, lang_code)
+                    if has_style: append_media_to_doubao(content_list, style_file, lang_code)
                     
-                    messages = [{"role": "user", "content": content_list}]
-                    
-                    response = client.chat.completions.create(
-                        model=doubao_ep, 
-                        messages=messages
-                    )
-                    st.success(t["success"])
-                    st.markdown(response.choices[0].message.content)
+                    response = client.chat.completions.create(model=doubao_ep, messages=[{"role": "user", "content": content_list}])
+                    st.session_state.design_result = response.choices[0].message.content
+
+                st.success(t["success"])
 
             except Exception as e:
-                st.error(f"发生错误 / Error: {e}")
+                st.error(f"分析错误: {e}")
+
+# ==========================================
+# 5. 画笔处理逻辑 (图像渲染 - 仅在有文字方案后显示)
+# ==========================================
+if st.session_state.design_result:
+    st.markdown("---")
+    st.markdown(st.session_state.design_result)
+    
+    st.markdown("---")
+    st.subheader("🖼️ AI 空间效果图渲染")
+    
+    # 点击渲染按钮
+    if st.button(t["btn_draw"], type="primary", use_container_width=True):
+        # 即使是大脑选了Gemini，绘图也需要豆包的 API Key 和 Seedream 接入点
+        draw_key = api_key if engine_choice == "字节豆包 (Doubao)" else st.sidebar.text_input("必须输入豆包 API Key 进行绘图", type="password")
+        
+        if not draw_key or not doubao_draw_ep:
+            st.error("⚠️ 请在左侧栏配置完整的 【豆包 API Key】 和 【豆包 画笔接入点 (Seedream EP)】")
+        else:
+            with st.spinner(t["status_drawing"]):
+                try:
+                    draw_client = OpenAI(api_key=draw_key, base_url="https://ark.cn-beijing.volces.com/api/v3")
+                    
+                    # 组装参考图 (优先用样板间作为底图，再加风格图参考)
+                    ref_images = []
+                    sh_b64 = get_base64_image(showhouse_file)
+                    if sh_b64: ref_images.append(f"data:image/jpeg;base64,{sh_b64}")
+                    style_b64 = get_base64_image(style_file)
+                    if style_b64: ref_images.append(f"data:image/jpeg;base64,{style_b64}")
+                    
+                    # 组装强力绘图 Prompt
+                    draw_prompt = f"Interior design, highly detailed, photorealistic, 8k, Unreal Engine 5 render, cinematic lighting. Based on user requirements: {st.session_state.user_req_cache}"
+                    
+                    # 发起绘图请求
+                    imagesResponse = draw_client.images.generate(
+                        model=doubao_draw_ep, 
+                        prompt=draw_prompt,
+                        size="2K",
+                        response_format="b64_json",
+                        stream=True,
+                        extra_body={
+                            "image": ref_images if ref_images else None,
+                            "watermark": False,
+                            "sequential_image_generation": "auto",
+                            "sequential_image_generation_options": {"max_images": 1}
+                        }
+                    )
+                    
+                    # 解析流式图片流
+                    image_placeholder = st.empty()
+                    for event in imagesResponse:
+                        if event is None: continue
+                        if event.type in ["image_generation.partial_succeeded", "image_generation.succeeded"]:
+                            if event.b64_json:
+                                image_data = base64.b64decode(event.b64_json)
+                                image_placeholder.image(image_data, caption=t["success_draw"], use_container_width=True)
+                                
+                    st.toast(t["success_draw"])
+                    
+                except Exception as e:
+                    st.error(f"渲染失败: {e}")
